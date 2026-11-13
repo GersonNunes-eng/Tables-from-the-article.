@@ -1,0 +1,128 @@
+install.packages("forecast")
+library(forecast)
+install.packages("urca")
+library(urca)
+install.packages("tseries")
+library(tseries)
+install.packages("randtests")
+library("randtests")
+
+demanda <- read.table("Doutorado/PPGMC/Dados/Brasil/Demanda_73.txt")
+View(demanda)
+test <- read.table("Doutorado/PPGMC/Dados/Brasil/SeriesCriadas/arima_sim_teste.txt")
+View(test)
+dados <- read.table("Doutorado/PPGMC/Dados/Brasil/SeriesCriadas/arima_sim_ajuste.txt")
+View(dados)
+database <- ts(demanda, start = 1, frequency = 1)
+View(database)
+train <- ts(dados, start = 1, frequency = 1)
+View(train)
+teste <- ts(test, start = 67, frequency = 1)
+View(teste)
+
+cox_stuart_result <- cox.stuart.test(train, "two.sided")
+print(cox_stuart_result)
+
+plot(database, type="l",col="blue",xlab="Ano", ylab="Log.da Demanda (GWh)")
+plot(train, type="l",col="blue",xlab="Ano", ylab="Log. da Demanda (GWh)")
+
+diff_data <- diff(train, differences = 1)
+View(diff_data)
+plot(diff_data, type="l",col="blue",xlab="Ano", ylab="1º Diferença do Log. da Demanda (GWh)")
+
+cox_stuart_result2 <- cox.stuart.test(diff_data, "two.sided")
+print(cox_stuart_result2)
+
+T=100;
+X = 4*(T/100)^(1/4)
+X
+y = 12*(T/100)^(1/4)
+y
+u = 4*(T/100)^(2/9)
+u
+
+adf_test <- ur.df(train, type = "drift", lags = 4, selectlags = c("BIC"))
+show(adf_test)
+summary(adf_test)
+adf_test <- ur.df(diff_data, type = "drift", lags = 4, selectlags = c("BIC"))
+show(adf_test)
+summary(adf_test)
+
+kpss_test_1a <- ur.kpss(train, type = c("tau"), use.lag = "short")
+summary(kpss_test_1a)
+kpss_test_1b <- ur.kpss(diff_data, type = c("tau"), use.lag = "short")
+summary(kpss_test_1b)
+
+pp<-ur.pp(train, type = c("Z-tau"), model = c("trend"), use.lag = "short")
+summary(pp)
+ppdf<-ur.pp(diff_data, type = c("Z-tau"), model = c("trend"), use.lag = "short")
+summary(ppdf)
+
+ndiffs(train, alpha = 0.05, test = c("pp"), type = c("level"), max.d = 3)
+ndiffs(train, alpha = 0.05, test = c("kpss"), type = c("level"), max.d = 3)
+ndiffs(train, alpha = 0.05, test = c("adf"), type = c("level"), max.d = 3)
+
+ndiffs(diff_data, alpha = 0.05, test = c("pp"), type = c("level"), max.d = 3)
+ndiffs(diff_data, alpha = 0.05, test = c("kpss"), type = c("level"), max.d = 3)
+ndiffs(diff_data, alpha = 0.05, test = c("adf"), type = c("level"), max.d = 3)
+
+acfplot<-acf(train, main="ACF", lag.max = 20)[1:20]
+plot(acfplot, main="Função de Autocorrelação (ACF)")
+pacfplot<-pacf(train, main="PACF", lag.max = 20)[1:20]
+plot(pacfplot, main="Função de Autocorrelação Parcial (PACF)")
+
+AutoArimaModelLog<-auto.arima(train, d=1, approximation=FALSE, stepwise = FALSE,
+                        test = c("kpss"), ic = c("bic"))
+
+summary(AutoArimaModelLog)
+
+fit <- Arima(train, order=c(1,1,1), include.drift = TRUE, include.mean = TRUE)
+#fit <- Arima(train, order=c(1,1,1), include.constant = TRUE)
+fit
+
+library(lmtest)
+coeftest(fit)
+install.packages("TSA")
+library(TSA)
+jarque.bera.test(residuals(fit)) #library ("tseries")
+install.packages("FinTS")
+library("FinTS")
+Box.test(residuals(fit), type = c("Ljung-Box"))
+ArchTest(residuals(fit), lags = 20)
+McLeod.Li.test(y = residuals(fit))
+
+checkresiduals(fit)
+summary(fit)
+res<-residuals(fit)
+res
+write.table(res, file = "residuos.txt", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+
+install.packages("e1071")
+library(e1071)
+hist(res)
+boxplot(res)
+mean(res)
+sd(res)
+skewness(res)
+kurtosis(res)
+class(res)
+str(res)
+print(boxplot(res)$stats)
+
+forecast_values <- forecast(fit, h=7)
+forecast_values$mean
+View(forecast_values)
+write.table(forecast_values, file = "previsoes.txt", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+accuracy(fit$fitted, train)
+accuracy(teste, as.numeric(forecast_values$mean))
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("ggfortify")
+library(ggfortify)
+
+autoplot(forecast_values, predict.colour = "red") + labs(x = "Ano", y = "Ln da Demanda de Energia Elétrica no Brasil", 
+                                                         title = "ARIMA (1,1,1) Previsão da Demanda de Energia Elétrica no Brasil") +
+  theme_test() + scale_x_continuous(breaks = seq(1,100,10)) +
+  scale_y_continuous(breaks = seq(5, 20, 1)) + geom_vline(xintercept = 2017, lty = "dashed")
